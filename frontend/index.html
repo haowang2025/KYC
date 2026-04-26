@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClearCheck — Merchant Risk Triage Agent</title>
+    <meta name="description"
+        content="AI-powered merchant risk triage agent with entity resolution, sanctions screening, and explainable decisions.">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        /* ── Reset & Variables ─────────────────────────────────── */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --bg-glass: rgba(255, 255, 255, 0.03);
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-glow: rgba(99, 102, 241, 0.3);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent: #818cf8;
+            --accent-glow: rgba(129, 140, 248, 0.15);
+            --green: #34d399;
+            --green-bg: rgba(52, 211, 153, 0.08);
+            --green-border: rgba(52, 211, 153, 0.25);
+            --yellow: #fbbf24;
+            --yellow-bg: rgba(251, 191, 36, 0.08);
+            --yellow-border: rgba(251, 191, 36, 0.25);
+            --red: #f87171;
+            --red-bg: rgba(248, 113, 113, 0.08);
+            --red-border: rgba(248, 113, 113, 0.25);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --font: 'Inter', -apple-system, sans-serif;
+            --mono: 'JetBrains Mono', 'Fira Code', monospace;
+        }
+
+        html {
+            font-size: 15px;
+        }
+
+        body {
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── Animated Background ────────────────────────────────── */
+        .bg-grid {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background-image:
+                radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(52, 211, 153, 0.04) 0%, transparent 50%),
+                radial-gradient(circle at 50% 80%, rgba(248, 113, 113, 0.03) 0%, transparent 50%);
+        }
+
+        .bg-grid::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: linear-gradient(rgba(255, 255, 255, .02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, .02) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        /* ── Layout ─────────────────────────────────────────────── */
+        .app {
+            position: relative;
+            z-index: 1;
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 32px 24px 48px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Header ─────────────────────────────────────────────── */
+        .header {
+            text-align: center;
+            margin-bottom: 36px;
+        }
+
+        .header .logo {
+            font-size: 2.2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent) 0%, #a78bfa 50%, var(--green) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.03em;
+        }
+
+        .header .logo span {
+            -webkit-text-fill-color: var(--text-secondary);
+            font-weight: 400;
+            font-size: 1.4rem;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            display: block;
+            margin-top: 2px;
+        }
+
+        .header .status-bar {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+            padding: 6px 16px;
+            background: var(--bg-glass);
+            border: 1px solid var(--border-subtle);
+            border-radius: 999px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .header .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 6px var(--green);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        /* ── Chat Area ──────────────────────────────────────────── */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+            padding-bottom: 24px;
+        }
+
+        .msg {
+            max-width: 85%;
+            padding: 14px 18px;
+            border-radius: var(--radius);
+            font-size: 0.9rem;
+            line-height: 1.6;
+            animation: msg-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes msg-in {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .msg.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(129, 140, 248, 0.08));
+            border: 1px solid rgba(129, 140, 248, 0.2);
+            color: var(--text-primary);
+        }
+
+        .msg.agent {
+            align-self: flex-start;
+            max-width: 95%;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            backdrop-filter: blur(12px);
+        }
+
+        /* ── Step Pipeline ──────────────────────────────────────── */
+        .pipeline {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            margin: 8px 0;
+        }
+
+        .step {
+            display: flex;
+            gap: 14px;
+            padding: 10px 0;
+            position: relative;
+        }
+
+        .step::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 32px;
+            width: 2px;
+            height: calc(100% - 22px);
+            background: var(--border-subtle);
+        }
+
+        .step:last-child::before {
+            display: none;
+        }
+
+        .step-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+            background: var(--bg-glass);
+            border: 1px solid var(--border-subtle);
+            position: relative;
+            z-index: 1;
+            transition: all 0.4s ease;
+        }
+
+        .step.active .step-icon {
+            background: var(--accent-glow);
+            border-color: var(--accent);
+            box-shadow: 0 0 12px var(--accent-glow);
+        }
+
+        .step.done .step-icon {
+            background: rgba(52, 211, 153, 0.1);
+            border-color: var(--green);
+            color: var(--green);
+        }
+
+        .step-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .step-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 4px;
+        }
+
+        .step.active .step-title {
+            color: var(--accent);
+        }
+
+        .step.done .step-title {
+            color: var(--green);
+        }
+
+        .step-content {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .step-content .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            margin: 2px;
+            border-radius: 4px;
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            font-weight: 500;
+        }
+
+        /* ── Loading Animation ──────────────────────────────────── */
+        .thinking {
+            display: inline-flex;
+            gap: 4px;
+            padding: 4px 0;
+        }
+
+        .thinking span {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+
+        .thinking span:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .thinking span:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            80%,
+            100% {
+                transform: scale(0);
+                opacity: 0.4;
+            }
+
+            40% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* ── Decision Card ──────────────────────────────────────── */
+        .decision-card {
+            margin: 12px 0;
+            border-radius: var(--radius);
+            padding: 20px 24px;
+            text-align: center;
+            animation: card-reveal 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes card-reveal {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .decision-card.red {
+            background: var(--red-bg);
+            border: 1px solid var(--red-border);
+        }
+
+        .decision-card.yellow {
+            background: var(--yellow-bg);
+            border: 1px solid var(--yellow-border);
+        }
+
+        .decision-card.green {
+            background: var(--green-bg);
+            border: 1px solid var(--green-border);
+        }
+
+        .decision-emoji {
+            font-size: 3rem;
+            margin-bottom: 8px;
+            animation: glow-pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes glow-pulse {
+
+            0%,
+            100% {
+                filter: drop-shadow(0 0 8px transparent);
+            }
+
+            50% {
+                filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.15));
+            }
+        }
+
+        .decision-label {
+            font-size: 1.3rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            margin-bottom: 4px;
+        }
+
+        .decision-card.red .decision-label {
+            color: var(--red);
+        }
+
+        .decision-card.yellow .decision-label {
+            color: var(--yellow);
+        }
+
+        .decision-card.green .decision-label {
+            color: var(--green);
+        }
+
+        .decision-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* ── Report Sections ────────────────────────────────────── */
+        .report-section {
+            margin: 12px 0 4px;
+            animation: msg-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .report-heading {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .report-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .report-list li {
+            padding: 6px 0;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            line-height: 1.55;
+            display: flex;
+            gap: 8px;
+        }
+
+        .report-list li .num {
+            font-family: var(--mono);
+            font-weight: 600;
+            color: var(--accent);
+            min-width: 20px;
+        }
+
+        /* ── Signal Tags ────────────────────────────────────────── */
+        .signal {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 6px 10px;
+            margin: 4px 0;
+            border-radius: var(--radius-sm);
+            font-size: 0.78rem;
+            line-height: 1.4;
+        }
+
+        .signal.critical {
+            background: var(--red-bg);
+            border: 1px solid var(--red-border);
+            color: var(--red);
+        }
+
+        .signal.elevated {
+            background: var(--yellow-bg);
+            border: 1px solid var(--yellow-border);
+            color: var(--yellow);
+        }
+
+        .signal.minor {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-muted);
+        }
+
+        .signal-code {
+            font-family: var(--mono);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        /* ── Input Bar ──────────────────────────────────────────── */
+        .input-bar {
+            position: sticky;
+            bottom: 0;
+            background: linear-gradient(to top, var(--bg-primary) 60%, transparent);
+            padding: 16px 0 4px;
+        }
+
+        .input-wrap {
+            display: flex;
+            gap: 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 14px;
+            padding: 6px 6px 6px 18px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+            backdrop-filter: blur(12px);
+        }
+
+        .input-wrap:focus-within {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow), 0 0 30px var(--accent-glow);
+        }
+
+        .input-wrap input {
+            flex: 1;
+            background: none;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            font-family: var(--font);
+            font-size: 0.9rem;
+        }
+
+        .input-wrap input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .input-wrap button {
+            background: linear-gradient(135deg, var(--accent), #a78bfa);
+            border: none;
+            border-radius: 10px;
+            padding: 10px 20px;
+            cursor: pointer;
+            color: white;
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: transform 0.15s, box-shadow 0.3s;
+            font-family: var(--font);
+        }
+
+        .input-wrap button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px var(--accent-glow);
+        }
+
+        .input-wrap button:active {
+            transform: translateY(0);
+        }
+
+        .input-wrap button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ── Quick Actions ──────────────────────────────────────── */
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 12px;
+        }
+
+        .quick-btn {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-subtle);
+            border-radius: 999px;
+            padding: 6px 14px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: var(--font);
+        }
+
+        .quick-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        /* ── Meta Footer ────────────────────────────────────────── */
+        .meta {
+            text-align: center;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 8px;
+            padding-top: 12px;
+        }
+
+        .meta a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        /* ── Special Effects ──────────────────────────────────────── */
+        @keyframes shake-red {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            10%,
+            30%,
+            50%,
+            70%,
+            90% {
+                transform: translateX(-8px) rotate(-1deg);
+                box-shadow: inset 0 0 150px rgba(248, 113, 113, 0.4);
+            }
+
+            20%,
+            40%,
+            60%,
+            80% {
+                transform: translateX(8px) rotate(1deg);
+                box-shadow: inset 0 0 100px rgba(248, 113, 113, 0.2);
+            }
+        }
+
+        @keyframes flash-red {
+
+            0%,
+            100% {
+                background-color: var(--bg-primary);
+            }
+
+            50% {
+                background-color: #5a0000;
+            }
+        }
+
+        @keyframes bg-grid-red {
+
+            0%,
+            100% {
+                opacity: 0.3;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        @keyframes shake-yellow {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            10%,
+            50%,
+            90% {
+                transform: translateX(-4px);
+                box-shadow: inset 0 0 80px rgba(251, 191, 36, 0.2);
+            }
+
+            30%,
+            70% {
+                transform: translateX(4px);
+                box-shadow: inset 0 0 40px rgba(251, 191, 36, 0.1);
+            }
+        }
+
+        body.effect-red {
+            animation: flash-red 1.5s infinite ease-in-out;
+        }
+
+        body.effect-red .bg-grid {
+            background-image: radial-gradient(circle at 50% 50%, rgba(248, 113, 113, 0.2) 0%, transparent 100%);
+            animation: bg-grid-red 1.5s infinite ease-in-out;
+        }
+
+        body.effect-red .app {
+            animation: shake-red 0.6s cubic-bezier(.36, .07, .19, .97) both;
+        }
+
+        body.effect-yellow .app {
+            animation: shake-yellow 0.5s ease-in-out both;
+        }
+
+        /* ── Responsive ─────────────────────────────────────────── */
+        @media (max-width: 640px) {
+            .header .logo {
+                font-size: 1.7rem;
+            }
+
+            .msg {
+                max-width: 95%;
+            }
+
+            .app {
+                padding: 16px 12px 32px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-grid"></div>
+    <audio id="bgm" src="/static/ClearCheck.mp3" loop preload="auto"></audio>
+
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                ClearCheck
+                <span>Merchant Risk Triage</span>
+            </div>
+            <div class="status-bar">
+                <div class="status-dot"></div>
+                <span id="statusText">ArangoDB Connected · TokenRouter LLM Ready</span>
+            </div>
+        </header>
+
+        <!-- Chat -->
+        <main class="chat-area" id="chatArea">
+            <div class="msg agent">
+                <div style="font-weight:600; margin-bottom:6px;">👋 Welcome to ClearCheck</div>
+                <div>Describe the merchant, supplier, or entity you want to screen — in any language. I'll extract the
+                    details, search the knowledge graph, and give you a risk triage decision.</div>
+            </div>
+        </main>
+
+        <!-- Input -->
+        <div class="input-bar">
+            <form class="input-wrap" id="inputForm" autocomplete="off">
+                <input type="text" id="queryInput" placeholder="e.g. Check Parsian Bank in Iran for onboarding..."
+                    autofocus>
+                <button type="submit" id="sendBtn">Triage</button>
+            </form>
+            <div class="quick-actions" id="quickActions">
+                <button class="quick-btn" data-q="We need to onboard Parsian Bank, a supplier from Iran">🔴 Parsian Bank
+                    / Iran</button>
+                <button class="quick-btn"
+                    data-q="Quick check on Stripe Inc from the US, standard merchant onboarding">🟢 Stripe Inc /
+                    US</button>
+                <button class="quick-btn" data-q="我们要接入一家迪拜的Golden Star Trading，20万美金的电子元器件订单">🟡 Golden Star /
+                    UAE</button>
+            </div>
+            <div class="meta">
+                Powered by <a href="https://api.tokenrouter.com" target="_blank">TokenRouter</a> LLM · ArangoDB
+                Knowledge Graph · Built for <a href="https://agenthansa.com" target="_blank">AgentHansa</a> Hackathon
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatArea = document.getElementById('chatArea');
+        const queryInput = document.getElementById('queryInput');
+        const inputForm = document.getElementById('inputForm');
+        const sendBtn = document.getElementById('sendBtn');
+        const quickActions = document.getElementById('quickActions');
+
+        let isProcessing = false;
+
+        // ── Helpers ──────────────────────────────────────────────
+
+        function scrollToBottom() {
+            chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: 'smooth' });
+        }
+
+        function addMsg(type, html) {
+            const div = document.createElement('div');
+            div.className = `msg ${type}`;
+            div.innerHTML = html;
+            chatArea.appendChild(div);
+            scrollToBottom();
+            return div;
+        }
+
+        function addThinking() {
+            return addMsg('agent', `
+    <div class="thinking"><span></span><span></span><span></span></div>
+    <span style="font-size:0.78rem; color:var(--text-muted); margin-left:8px;">Analyzing entity...</span>
+  `);
+        }
+
+        function severityIcon(s) {
+            if (s === 'critical') return '🔴';
+            if (s === 'elevated') return '🟡';
+            return '⚪';
+        }
+
+        function decisionEmoji(d) {
+            if (d === 'RED') return '🛑';
+            if (d === 'YELLOW') return '⚠️';
+            return '✅';
+        }
+
+        function decisionClass(d) { return d.toLowerCase(); }
+
+        // ── Pipeline Step Builder ────────────────────────────────
+
+        function buildPipeline(data) {
+            const n = data.normalized;
+            const k = data.kg;
+            const r = data.result;
+
+            // Step 1: Parse
+            let aliasHtml = n.aliases.map(a => `<span class="tag" style="background:var(--accent-glow); color:var(--accent);">${a}</span>`).join(' ');
+            let step1Content = `
+    <div><strong>Canonical:</strong> ${n.canonical_name}</div>
+    <div style="margin:4px 0">${aliasHtml}</div>
+    <div><strong>Country:</strong> ${n.country || 'Not specified'}</div>
+  `;
+            if (n.transaction_amount) step1Content += `<div><strong>Amount:</strong> $${n.transaction_amount.toLocaleString()}</div>`;
+            if (n.goods_category) step1Content += `<div><strong>Goods:</strong> ${n.goods_category}</div>`;
+            if (n.notes) step1Content += `<div style="margin-top:4px; font-style:italic; color:var(--text-muted); font-size:0.76rem;">💡 ${n.notes}</div>`;
+
+            // Step 2: KG
+            let step2Content;
+            if (k.has_match) {
+                step2Content = `
+      <div>⚡ <strong>Match:</strong> ${k.match_name} (${k.match_country})</div>
+      <div>Labels: ${k.match_labels.map(l => `<span class="tag" style="background:var(--red-bg); color:var(--red);">${l}</span>`).join(' ')}</div>
+      <div>Confidence: <strong>${Math.round(k.match_confidence * 100)}%</strong> · Source: ${k.source} · ${k.variant_count} variants searched</div>
+    `;
+            } else {
+                step2Content = `<div>✓ No matching entities found · Source: ${k.source} · ${k.variant_count} variants searched</div>`;
+            }
+
+            // Step 3: Signals
+            let signalsHtml = r.signals.map(s => `
+    <div class="signal ${s.severity}">
+      <span>${severityIcon(s.severity)}</span>
+      <span class="signal-code">${s.code}</span>
+      <span>${s.description}</span>
+    </div>
+  `).join('');
+
+            // Step 4: Decision
+            let decisionHtml = `
+    <div class="decision-card ${decisionClass(r.decision)}">
+      <div class="decision-emoji">${decisionEmoji(r.decision)}</div>
+      <div class="decision-label">${r.decision} — ${r.decision_label}</div>
+      <div class="decision-sub">Confidence: ${r.confidence} · ${r.timestamp}</div>
+    </div>
+  `;
+
+            // Step 5: Report
+            let reasonsHtml = r.reasons.map((r, i) => `<li><span class="num">${i + 1}.</span><span>${r}</span></li>`).join('');
+            let actionsHtml = r.next_actions.map((a, i) => `<li><span class="num">${i + 1}.</span><span>${a}</span></li>`).join('');
+
+            return `
+    <div class="pipeline">
+      <div class="step done">
+        <div class="step-icon">1</div>
+        <div class="step-body">
+          <div class="step-title">Entity Resolution (LLM)</div>
+          <div class="step-content">${step1Content}</div>
+        </div>
+      </div>
+      <div class="step done">
+        <div class="step-icon">2</div>
+        <div class="step-body">
+          <div class="step-title">Knowledge Graph Search</div>
+          <div class="step-content">${step2Content}</div>
+        </div>
+      </div>
+      <div class="step done">
+        <div class="step-icon">3</div>
+        <div class="step-body">
+          <div class="step-title">Risk Signal Evaluation</div>
+          <div class="step-content">${signalsHtml}</div>
+        </div>
+      </div>
+    </div>
+
+    ${decisionHtml}
+
+    <div class="report-section">
+      <div class="report-heading">Why — Top 3 Reasons</div>
+      <ul class="report-list">${reasonsHtml}</ul>
+    </div>
+
+    <div class="report-section">
+      <div class="report-heading">Recommended Actions</div>
+      <ul class="report-list">${actionsHtml}</ul>
+    </div>
+
+    <div style="font-size:0.7rem; color:var(--text-muted); margin-top:12px; padding-top:8px; border-top:1px solid var(--border-subtle);">
+      This is a risk triage, not legal advice. Final decisions should involve human review.
+    </div>
+  `;
+        }
+
+        // ── BGM Autoplay Handling ────────────────────────────────
+        const bgm = document.getElementById('bgm');
+        let bgmStarted = false;
+
+        function startBgm() {
+            if (!bgmStarted) {
+                bgm.volume = 0.5;
+                bgm.play().catch(e => console.log("Audio play failed:", e));
+                bgmStarted = true;
+                document.removeEventListener('click', startBgm);
+                document.removeEventListener('keydown', startBgm);
+            }
+        }
+        document.addEventListener('click', startBgm);
+        document.addEventListener('keydown', startBgm);
+
+        // ── Submit ────────────────────────────────────────────────
+
+        function triggerConfetti() {
+            const duration = 3000;
+            const animationEnd = Date.now() + duration;
+            const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
+
+            function randomInRange(min, max) {
+                return Math.random() * (max - min) + min;
+            }
+
+            const interval = setInterval(function () {
+                const timeLeft = animationEnd - Date.now();
+
+                if (timeLeft <= 0) {
+                    return clearInterval(interval);
+                }
+
+                const particleCount = 50 * (timeLeft / duration);
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+            }, 250);
+        }
+
+        function triggerDecisionEffects(decision) {
+            document.body.classList.remove('effect-red', 'effect-yellow');
+            if (decision === 'RED') {
+                document.body.classList.add('effect-red');
+            } else if (decision === 'YELLOW') {
+                document.body.classList.add('effect-yellow');
+            } else if (decision === 'GREEN') {
+                triggerConfetti();
+            }
+        }
+
+        async function handleSubmit(query) {
+            if (isProcessing || !query.trim()) return;
+            isProcessing = true;
+            sendBtn.disabled = true;
+            queryInput.value = '';
+
+            document.body.classList.remove('effect-red', 'effect-yellow');
+
+            addMsg('user', query);
+            const thinkingMsg = addThinking();
+
+            try {
+                const resp = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query }),
+                });
+
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+
+                thinkingMsg.remove();
+                addMsg('agent', buildPipeline(data));
+
+                // Trigger visual effects after pipeline loads
+                setTimeout(() => {
+                    triggerDecisionEffects(data.result.decision);
+                }, 100);
+
+            } catch (err) {
+                thinkingMsg.remove();
+                addMsg('agent', `<div style="color:var(--red);">❌ Error: ${err.message}. Please try again.</div>`);
+            }
+
+            isProcessing = false;
+            sendBtn.disabled = false;
+            queryInput.focus();
+        }
+
+        inputForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            handleSubmit(queryInput.value);
+        });
+
+        quickActions.addEventListener('click', (e) => {
+            const btn = e.target.closest('.quick-btn');
+            if (btn) {
+                handleSubmit(btn.dataset.q);
+            }
+        });
+
+        // ── Health check ─────────────────────────────────────────
+        fetch('/health').then(r => r.json()).then(d => {
+            document.getElementById('statusText').textContent =
+                `ArangoDB ${d.kg === 'connected' ? 'Connected' : 'Fallback'} · TokenRouter LLM Ready`;
+        }).catch(() => {
+            document.getElementById('statusText').textContent = 'Connecting...';
+        });
+    </script>
+</body>
+
+</html>
